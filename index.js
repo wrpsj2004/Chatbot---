@@ -26,6 +26,10 @@ app.post("/webhook", line.middleware(config), async (req, res) => {
   }
 });
 
+app.get('/ping', (req, res) => {
+  res.status(200).send('pong');
+});
+
 async function handleEvent(event) {
   if (event.type !== "message" && event.type !== "postback") return;
 
