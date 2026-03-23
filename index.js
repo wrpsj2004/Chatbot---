@@ -154,5 +154,9 @@ function createFlexCheckInOut(action, userName, dateStr, timeStr) {
   };
 }
 
+const dataFromSheet = response.data; 
+console.log("--- Debug Data From GAS ---");
+console.log(dataFromSheet); // ดูผลลัพธ์ใน Terminal ของคุณ
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Bot running on port ${PORT}`));
