@@ -25,8 +25,8 @@ app.post("/webhook", line.middleware(config), async (req, res) => {
   }
 });
 
-app.get('/ping', (req, res) => {
-  res.status(200).send('pong');
+app.get("/ping", (req, res) => {
+  res.status(200).send("pong");
 });
 
 async function handleEvent(event) {
@@ -39,14 +39,21 @@ async function handleEvent(event) {
   const profile = await client.getProfile(userId);
   const userName = profile.displayName;
 
-  const dateStr = utc7.toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" });
-  const timeStr = utc7.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+  const dateStr = utc7.toLocaleDateString("th-TH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const timeStr = utc7.toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   let action = null;
 
   // 1. รับค่าจาก Postback (แนะนำให้ใช้กับ Rich Menu)
   if (event.type === "postback") {
-    action = event.postback.data; 
+    action = event.postback.data;
   }
 
   // 2. รับค่าจาก Message (พิมพ์มา)
@@ -71,24 +78,24 @@ async function handleEvent(event) {
       time: timeStr,
     });
 
-    const dataFromSheet = response.data; // สมมติว่า GAS ส่งค่าคงเหลือกลับมาด้วย
+    const dataFromSheet = response.data;
+    console.log("--- Debug Data From GAS ---");
+    console.log(dataFromSheet); // ดูผลลัพธ์ใน Terminal ของคุณ
     let replyMessage = {};
 
     // แยกการตอบกลับตาม Action
     if (action === "checkin" || action === "checkout") {
       replyMessage = createFlexCheckInOut(action, userName, dateStr, timeStr);
-    } 
-    else if (action === "check_quota") {
+    } else if (action === "check_quota") {
       replyMessage = {
         type: "text",
-        text: `📊 วันลาคงเหลือของคุณ ${userName}\n🤒 ลาป่วย: ${dataFromSheet.sick || 0} วัน\n💼 ลากิจ: ${dataFromSheet.private || 0} วัน`
+        text: `📊 วันลาคงเหลือของคุณ ${userName}\n🤒 ลาป่วย: ${dataFromSheet.sick || 0} วัน\n💼 ลากิจ: ${dataFromSheet.private || 0} วัน`,
       };
-    }
-    else if (action === "leave_sick" || action === "leave_private") {
+    } else if (action === "leave_sick" || action === "leave_private") {
       const typeLabel = action === "leave_sick" ? "ลาป่วย" : "ลากิจ";
       replyMessage = {
         type: "text",
-        text: `✅ บันทึก${typeLabel}เรียบร้อยแล้ว\n📅 วันที่: ${dateStr}\nคงเหลือ: ${dataFromSheet.remain || 0} วัน`
+        text: `✅ บันทึก${typeLabel}เรียบร้อยแล้ว\n📅 วันที่: ${dateStr}\nคงเหลือ: ${dataFromSheet.remain || 0} วัน`,
       };
     }
 
@@ -96,12 +103,13 @@ async function handleEvent(event) {
       replyToken: event.replyToken,
       messages: [replyMessage],
     });
-
   } catch (e) {
     console.error("Error:", e.message);
     return client.replyMessage({
       replyToken: event.replyToken,
-      messages: [{ type: "text", text: "เกิดข้อผิดพลาดในการเชื่อมต่อระบบครับ ❌" }],
+      messages: [
+        { type: "text", text: "เกิดข้อผิดพลาดในการเชื่อมต่อระบบครับ ❌" },
+      ],
     });
   }
 }
@@ -118,45 +126,81 @@ function createFlexCheckInOut(action, userName, dateStr, timeStr) {
         type: "box",
         layout: "vertical",
         backgroundColor: isCheckIn ? "#00B900" : "#FF334B",
-        contents: [{ type: "text", text: isCheckIn ? "🟢 เข้างาน" : "🔴 ออกงาน", color: "#ffffff", weight: "bold", size: "xl", align: "center" }],
+        contents: [
+          {
+            type: "text",
+            text: isCheckIn ? "🟢 เข้างาน" : "🔴 ออกงาน",
+            color: "#ffffff",
+            weight: "bold",
+            size: "xl",
+            align: "center",
+          },
+        ],
       },
       body: {
         type: "box",
         layout: "vertical",
         spacing: "md",
         contents: [
-          { type: "text", text: `สวัสดี ${userName}`, weight: "bold", size: "lg" },
+          {
+            type: "text",
+            text: `สวัสดี ${userName}`,
+            weight: "bold",
+            size: "lg",
+          },
           { type: "separator" },
           {
             type: "box",
             layout: "horizontal",
             contents: [
-              { type: "text", text: "📅 วันที่", size: "sm", color: "#888888", flex: 2 },
-              { type: "text", text: dateStr, size: "sm", flex: 4, wrap: true }
-            ]
+              {
+                type: "text",
+                text: "📅 วันที่",
+                size: "sm",
+                color: "#888888",
+                flex: 2,
+              },
+              { type: "text", text: dateStr, size: "sm", flex: 4, wrap: true },
+            ],
           },
           {
             type: "box",
             layout: "horizontal",
             contents: [
-              { type: "text", text: "🕐 เวลา", size: "sm", color: "#888888", flex: 2 },
-              { type: "text", text: `${timeStr} น.`, size: "sm", flex: 4, weight: "bold" }
-            ]
-          }
-        ]
+              {
+                type: "text",
+                text: "🕐 เวลา",
+                size: "sm",
+                color: "#888888",
+                flex: 2,
+              },
+              {
+                type: "text",
+                text: `${timeStr} น.`,
+                size: "sm",
+                flex: 4,
+                weight: "bold",
+              },
+            ],
+          },
+        ],
       },
       footer: {
         type: "box",
         layout: "vertical",
-        contents: [{ type: "text", text: "บันทึกข้อมูลสำเร็จแล้ว ✅", color: "#888888", size: "xs", align: "center" }]
-      }
-    }
+        contents: [
+          {
+            type: "text",
+            text: "บันทึกข้อมูลสำเร็จแล้ว ✅",
+            color: "#888888",
+            size: "xs",
+            align: "center",
+          },
+        ],
+      },
+    },
   };
 }
-
-const dataFromSheet = response.data; 
-console.log("--- Debug Data From GAS ---");
-console.log(dataFromSheet); // ดูผลลัพธ์ใน Terminal ของคุณ
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Bot running on port ${PORT}`));
