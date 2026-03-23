@@ -14,7 +14,6 @@ const client = new line.messagingApi.MessagingApiClient({
   channelAccessToken: config.channelAccessToken,
 });
 
-// Webhook endpoint
 app.post("/webhook", line.middleware(config), async (req, res) => {
   try {
     const events = req.body.events;
@@ -37,154 +36,122 @@ async function handleEvent(event) {
   const now = new Date();
   const utc7 = new Date(now.getTime() + 7 * 60 * 60 * 1000);
 
-  // ดึงข้อมูล Profile
   const profile = await client.getProfile(userId);
   const userName = profile.displayName;
 
-  // จัดรูปแบบวันที่/เวลา (ไทย)
-  const dateStr = utc7.toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "long",
-  });
-  const timeStr = utc7.toLocaleTimeString("th-TH", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const dateStr = utc7.toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" });
+  const timeStr = utc7.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 
   let action = null;
 
-  // รับ postback จาก Rich Menu
+  // 1. รับค่าจาก Postback (แนะนำให้ใช้กับ Rich Menu)
   if (event.type === "postback") {
-    action = event.postback.data; // "checkin" หรือ "checkout"
+    action = event.postback.data; 
   }
 
-  // รับข้อความ (สำหรับทดสอบ)
+  // 2. รับค่าจาก Message (พิมพ์มา)
   if (event.type === "message" && event.message.type === "text") {
-    const text = event.message.text.toLowerCase();
-    if (text.includes("เข้างาน") || text === "checkin") action = "checkin";
-    if (text.includes("ออกงาน") || text === "checkout") action = "checkout";
+    const text = event.message.text;
+    if (text.includes("เข้างาน")) action = "checkin";
+    else if (text.includes("ออกงาน")) action = "checkout";
+    else if (text.includes("เช็ควันลา")) action = "check_quota";
+    else if (text.includes("ลาป่วย")) action = "leave_sick";
+    else if (text.includes("ลากิจ")) action = "leave_private";
   }
 
-  if (!action) {
-    return client.replyMessage({
-      replyToken: event.replyToken,
-      messages: [
-        {
-          type: "text",
-          text: 'กรุณากด "เข้างาน" หรือ "ออกงาน" จาก Rich Menu ด้านล่างนะครับ 😊',
-        },
-      ],
-    });
-  }
+  if (!action) return;
 
-  // บันทึกไปยัง Google Sheets
   try {
-    await axios.post(process.env.GOOGLE_SCRIPT_URL, {
+    // ส่งข้อมูลไปที่ Google Sheets (GAS)
+    const response = await axios.post(process.env.GOOGLE_SCRIPT_URL, {
       userId,
       userName,
-      action,
+      action, // 'checkin', 'checkout', 'check_quota', 'leave_sick', 'leave_private'
       date: dateStr,
       time: timeStr,
     });
+
+    const dataFromSheet = response.data; // สมมติว่า GAS ส่งค่าคงเหลือกลับมาด้วย
+    let replyMessage = {};
+
+    // แยกการตอบกลับตาม Action
+    if (action === "checkin" || action === "checkout") {
+      replyMessage = createFlexCheckInOut(action, userName, dateStr, timeStr);
+    } 
+    else if (action === "check_quota") {
+      replyMessage = {
+        type: "text",
+        text: `📊 วันลาคงเหลือของคุณ ${userName}\n🤒 ลาป่วย: ${dataFromSheet.sick || 0} วัน\n💼 ลากิจ: ${dataFromSheet.private || 0} วัน`
+      };
+    }
+    else if (action === "leave_sick" || action === "leave_private") {
+      const typeLabel = action === "leave_sick" ? "ลาป่วย" : "ลากิจ";
+      replyMessage = {
+        type: "text",
+        text: `✅ บันทึก${typeLabel}เรียบร้อยแล้ว\n📅 วันที่: ${dateStr}\nคงเหลือ: ${dataFromSheet.remain || 0} วัน`
+      };
+    }
+
+    return client.replyMessage({
+      replyToken: event.replyToken,
+      messages: [replyMessage],
+    });
+
   } catch (e) {
-    console.error("Google Sheets error:", e.message);
+    console.error("Error:", e.message);
+    return client.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: "text", text: "เกิดข้อผิดพลาดในการเชื่อมต่อระบบครับ ❌" }],
+    });
   }
+}
 
-  // ข้อความตอบกลับ
-  const emoji = action === "checkin" ? "🟢" : "🔴";
-  const actionText = action === "checkin" ? "เข้างาน" : "ออกงาน";
-
-  const replyMessage = {
+// ฟังก์ชันสร้าง Flex Message สำหรับ เข้า-ออก งาน (แยกออกมาเพื่อให้ Code สะอาด)
+function createFlexCheckInOut(action, userName, dateStr, timeStr) {
+  const isCheckIn = action === "checkin";
+  return {
     type: "flex",
-    altText: `บันทึก${actionText}สำเร็จ`,
+    altText: `บันทึก${isCheckIn ? "เข้างาน" : "ออกงาน"}สำเร็จ`,
     contents: {
       type: "bubble",
       header: {
         type: "box",
         layout: "vertical",
-        backgroundColor: action === "checkin" ? "#00B900" : "#FF334B",
-        contents: [
-          {
-            type: "text",
-            text: `${emoji} ${actionText}`,
-            color: "#ffffff",
-            weight: "bold",
-            size: "xl",
-            align: "center",
-          },
-        ],
+        backgroundColor: isCheckIn ? "#00B900" : "#FF334B",
+        contents: [{ type: "text", text: isCheckIn ? "🟢 เข้างาน" : "🔴 ออกงาน", color: "#ffffff", weight: "bold", size: "xl", align: "center" }],
       },
       body: {
         type: "box",
         layout: "vertical",
         spacing: "md",
         contents: [
-          {
-            type: "text",
-            text: `สวัสดี ${userName}`,
-            weight: "bold",
-            size: "lg",
-          },
+          { type: "text", text: `สวัสดี ${userName}`, weight: "bold", size: "lg" },
           { type: "separator" },
           {
             type: "box",
             layout: "horizontal",
             contents: [
-              {
-                type: "text",
-                text: "📅 วันที่",
-                size: "sm",
-                color: "#888888",
-                flex: 2,
-              },
-              { type: "text", text: dateStr, size: "sm", flex: 4, wrap: true },
-            ],
+              { type: "text", text: "📅 วันที่", size: "sm", color: "#888888", flex: 2 },
+              { type: "text", text: dateStr, size: "sm", flex: 4, wrap: true }
+            ]
           },
           {
             type: "box",
             layout: "horizontal",
             contents: [
-              {
-                type: "text",
-                text: "🕐 เวลา",
-                size: "sm",
-                color: "#888888",
-                flex: 2,
-              },
-              {
-                type: "text",
-                text: timeStr,
-                size: "sm",
-                flex: 4,
-                weight: "bold",
-              },
-            ],
-          },
-        ],
+              { type: "text", text: "🕐 เวลา", size: "sm", color: "#888888", flex: 2 },
+              { type: "text", text: `${timeStr} น.`, size: "sm", flex: 4, weight: "bold" }
+            ]
+          }
+        ]
       },
       footer: {
         type: "box",
         layout: "vertical",
-        contents: [
-          {
-            type: "text",
-            text: "บันทึกข้อมูลสำเร็จแล้ว ✅",
-            color: "#888888",
-            size: "xs",
-            align: "center",
-          },
-        ],
-      },
-    },
+        contents: [{ type: "text", text: "บันทึกข้อมูลสำเร็จแล้ว ✅", color: "#888888", size: "xs", align: "center" }]
+      }
+    }
   };
-
-  return client.replyMessage({
-    replyToken: event.replyToken,
-    messages: [replyMessage],
-  });
 }
 
 const PORT = process.env.PORT || 3000;
